@@ -1,0 +1,26 @@
+{
+    "configurations": [
+        {
+            "type": "aws-sam",
+            "request": "direct-invoke",
+            "name": "event-api:put_value.handler (nodejs14.x)",
+            "invokeTarget": {
+                "target": "code",
+                "projectRoot": "${workspaceFolder}/event-api",
+                "lambdaHandler": "put_value.handler"
+            },
+            "lambda": {
+                "runtime": "nodejs14.x",
+                "payload": {
+                    "json": {
+                        "queryStringParameters": {
+                            "key": "a",
+                            "value": "1",
+                        }
+                    }
+                },
+                "environmentVariables": {},
+            }
+        }
+    ]
+}

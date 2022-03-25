@@ -1,0 +1,14 @@
+{
+  "name": "event-api",
+  "version": "1.0.0",
+  "description": "AWS Lambda functions for an events API.",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "type": "module",
+  "author": "",
+  "dependencies": {
+    "knex": "^1.0.4",
+    "mysql": "^2.18.1"
+  }
+}
