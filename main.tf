@@ -22,6 +22,22 @@ provider "aws" {
 }
 
 
+## Default VPC for getting everything to communicate (and where to put the database)
+
+resource "aws_default_vpc" "default" {
+  tags = {
+    Name = "Default VPC"
+  }
+}
+
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [aws_default_vpc.default.id]
+  }
+}
+
+
 ## S3 Bucket lambda_bucket for Lambda Function Archive Object lambda_event_api
 
 resource "random_pet" "lambda_bucket_name" {
@@ -154,6 +170,15 @@ resource "aws_db_parameter_group" "rds_default" {
   # Log connections?
 }
 
+resource "aws_db_subnet_group" "event_api_db" {
+  name       = "default vpc subnets"
+  subnet_ids = data.aws_subnets.default.ids
+
+  tags = {
+    Name = "The subnets for the default VPC"
+  }
+}
+
 resource "aws_db_instance" "event_api_db" {
   allocated_storage     = 5               #  GiB
   engine                = "mariadb"
@@ -164,6 +189,7 @@ resource "aws_db_instance" "event_api_db" {
   password              = random_pet.event_database_password.id
   skip_final_snapshot   = true
 
+  db_subnet_group_name   = aws_db_subnet_group.event_api_db.id
   vpc_security_group_ids = [aws_security_group.event_api_rds.id]
   parameter_group_name   = aws_db_parameter_group.rds_default.name
 
@@ -187,6 +213,12 @@ resource "aws_lambda_function" "put_value" {
   source_code_hash = data.archive_file.lambda_event_api.output_base64sha256
 
   role = aws_iam_role.lambda_vpc_exec.arn
+  
+  vpc_config {
+    # Needs to be the same availability zone as the database?
+	subnet_ids         = data.aws_subnets.default.ids
+	security_group_ids = [aws_security_group.event_api_rds.id]
+  }
 
   environment {
     variables = {
@@ -243,6 +275,12 @@ resource "aws_lambda_function" "get_value" {
   source_code_hash = data.archive_file.lambda_event_api.output_base64sha256
 
   role = aws_iam_role.lambda_vpc_exec.arn
+  
+  vpc_config {
+    # Needs to be the same availability zone as the database?
+	subnet_ids         = data.aws_subnets.default.ids
+	security_group_ids = [aws_security_group.event_api_rds.id]
+  }
 
   environment {
     variables = {
