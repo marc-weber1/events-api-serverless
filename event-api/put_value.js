@@ -1,16 +1,16 @@
-import knex from 'knex'
+import dynamo from 'dynamodb';
+import Joi from 'joi';
+dynamo.AWS.config.update({accessKeyID: process.env.db_key_id, secretAccessKey: process.env.db_secret_key, region: process.env.aws_region})
 
+var ExampleModel = dynamo.define('event_api_dynamo_example', {
+	hashKey: 'key',
 
-const knex_client = knex({
-	client: 'mysql',
-	connection: {
-		host: process.env.db_endpoint,
-		port: process.env.db_port,
-		user: process.env.db_user,
-		password: process.env.db_pass,
-		database: process.env.db_name,
-	},
+	schema: {
+		key: Joi.string(),
+		value: Joi.string()
+	}
 });
+ExampleModel.config({tableName: "event_api_dynamo_example"});
 
 
 export async function handler(event){
@@ -18,18 +18,18 @@ export async function handler(event){
 
 	if (event.queryStringParameters && event.queryStringParameters['key'] && event.queryStringParameters['value']) {
 
-		return await knex_client('example').insert({
-			key: event.queryStringParameters['key'],
-			value: event.queryStringParameters['value'],
-		}).then(() => {
+		var entry = new ExampleModel({key: event.queryStringParameters['key'], value: event.queryStringParameters['value']});
+
+		return await entry.save()
+		.then(() => {
 			return {
 				statusCode: 201,
 				headers: {
 					'Content-Type': 'application/json',
 				},
 				body: JSON.stringify({
-					key: event.queryStringParameters['key'],
-					value: event.queryStringParameters['value'],
+					key: entry.get('key'),
+					value: entry.get('value')
 				}),
 			};
 		}).catch( (err) => {

@@ -1,16 +1,16 @@
-import knex from 'knex'
+import dynamo from 'dynamodb';
+import Joi from 'joi';
+dynamo.AWS.config.update({accessKeyID: process.env.db_key_id, secretAccessKey: process.env.db_secret_key, region: process.env.aws_region})
 
+var ExampleModel = dynamo.define('event_api_dynamo_example', {
+	hashKey: 'key',
 
-const knex_client = knex({
-	client: 'mysql',
-	connection: {
-		host: process.env.db_endpoint,
-		port: process.env.db_port,
-		user: process.env.db_user,
-		password: process.env.db_pass,
-		database: process.env.db_name,
-	},
+	schema: {
+		key: Joi.string(),
+		value: Joi.string()
+	}
 });
+ExampleModel.config({tableName: "event_api_dynamo_example"});
 
 
 export async function handler(event){
@@ -18,10 +18,10 @@ export async function handler(event){
 
     if(event.queryStringParameters && event.queryStringParameters['key']){
 
-        return await knex_client('example').where({key: event.queryStringParameters['key']})
-            .then((rows) => {
+        return await ExampleModel.get(event.queryStringParameters['key'])
+            .then((entry) => {
 
-                if( rows.length == 0 ){
+                /*if( rows.length == 0 ){
                     return {
                         statusCode: 200,
                         headers: {
@@ -32,17 +32,18 @@ export async function handler(event){
                         }),
                     };
                 }
-                else{
+                else{*/
                     return {
                         statusCode: 200,
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify(
-                            rows[0]
-                        ),
+                        body: JSON.stringify({
+                            key: entry.get('key'),
+                            value: entry.get('value')
+                        }),
                     };
-                }
+                //}
 
             })
             .catch((err) => {

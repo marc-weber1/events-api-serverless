@@ -90,9 +90,35 @@ resource "aws_iam_role" "lambda_vpc_exec" {
   })
 }
 
+resource "aws_iam_policy" "DynamoReadWrite" {
+  name = "DynamoReadWrite"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = [
+        "dynamodb:BatchGetItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:CreateTable",
+        "dynamodb:DeleteItem",
+        "dynamodb:DeleteTable",
+        "dynamodb:DescribeTable",
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:UpdateItem",
+        "dynamodb:UpdateTable"
+      ]
+      Effect = "Allow"
+      Resource = "*"
+    }]
+  })
+}
+
 resource "aws_iam_role_policy_attachment" "lambda_policy" {
   role       = aws_iam_role.lambda_vpc_exec.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+  policy_arn = aws_iam_policy.DynamoReadWrite.arn
 }
 
 
@@ -136,7 +162,7 @@ resource "aws_apigatewayv2_stage" "lambda" {
 
 
 ## Database
-
+/*
 resource "random_pet" "event_database_password" {
   length = 4
 
@@ -195,6 +221,22 @@ resource "aws_db_instance" "event_api_db" {
 
   apply_immediately     = true  # CHANGE THIS FOR PRODUCTION
 }
+*/
+
+## DynamoDB Database
+
+resource "aws_dynamodb_table" "example" {
+  name          = "event_api_dynamo_example"
+  billing_mode  = "PAY_PER_REQUEST"
+  hash_key      = "key"
+
+  attribute {
+    name = "key"
+    type = "S"
+  }
+
+  # Value is not in the key schema
+}
 
 
 ## Functions
@@ -214,19 +256,18 @@ resource "aws_lambda_function" "put_value" {
 
   role = aws_iam_role.lambda_vpc_exec.arn
   
-  vpc_config {
+  /*vpc_config {
     # Needs to be the same availability zone as the database?
 	subnet_ids         = data.aws_subnets.default.ids
 	security_group_ids = [aws_security_group.event_api_rds.id]
-  }
+  }*/
 
   environment {
     variables = {
-      db_endpoint = aws_db_instance.event_api_db.address
-      db_user     = aws_db_instance.event_api_db.username
-      db_pass     = aws_db_instance.event_api_db.password
-      db_port     = aws_db_instance.event_api_db.port
-      db_name     = aws_db_instance.event_api_db.db_name
+      aws_region = var.aws_region
+      db_name = aws_dynamodb_table.example.name
+      db_key_id  = ""
+      db_secret_key = ""
     }
   }
 }
@@ -276,19 +317,18 @@ resource "aws_lambda_function" "get_value" {
 
   role = aws_iam_role.lambda_vpc_exec.arn
   
-  vpc_config {
+  /*vpc_config {
     # Needs to be the same availability zone as the database?
 	subnet_ids         = data.aws_subnets.default.ids
 	security_group_ids = [aws_security_group.event_api_rds.id]
-  }
+  }*/
 
   environment {
     variables = {
-      db_endpoint = aws_db_instance.event_api_db.address
-      db_user     = aws_db_instance.event_api_db.username
-      db_pass     = aws_db_instance.event_api_db.password
-      db_port     = aws_db_instance.event_api_db.port
-      db_name     = aws_db_instance.event_api_db.db_name
+      aws_region = var.aws_region
+      db_name = aws_dynamodb_table.example.name
+      db_key_id  = ""
+      db_secret_key = ""
     }
   }
 }
