@@ -108,7 +108,10 @@ resource "aws_iam_policy" "DynamoReadWrite" {
         "dynamodb:Query",
         "dynamodb:Scan",
         "dynamodb:UpdateItem",
-        "dynamodb:UpdateTable"
+        "dynamodb:UpdateTable",
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
       ]
       Effect = "Allow"
       Resource = "*"

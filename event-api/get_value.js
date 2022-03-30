@@ -1,16 +1,4 @@
-import dynamo from 'dynamodb';
-import Joi from 'joi';
-dynamo.AWS.config.update({accessKeyID: process.env.db_key_id, secretAccessKey: process.env.db_secret_key, region: process.env.aws_region})
-
-var ExampleModel = dynamo.define('event_api_dynamo_example', {
-	hashKey: 'key',
-
-	schema: {
-		key: Joi.string(),
-		value: Joi.string()
-	}
-});
-ExampleModel.config({tableName: "event_api_dynamo_example"});
+import ExampleModel from './example_model.js';
 
 
 export async function handler(event){
