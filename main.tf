@@ -41,7 +41,7 @@ data "aws_subnets" "default" {
 ## S3 Bucket lambda_bucket for Lambda Function Archive Object lambda_event_api
 
 resource "random_pet" "lambda_bucket_name" {
-  prefix = "learn-terraform-functions"
+  prefix = "serverless-event-api"
   length = 4
 
   keepers = {
@@ -72,10 +72,32 @@ resource "aws_s3_object" "lambda_event_api" {
 }
 
 
+## DynamoDB Database
+
+resource "aws_dynamodb_table" "event_db" {
+  name          = "event_api_db"
+  billing_mode  = "PAY_PER_REQUEST"
+  hash_key      = "name"
+  range_key     = "start_time"
+
+  attribute {
+    name = "name"
+    type = "S"
+  }
+
+  attribute {
+    name = "start_time"
+    type = "S"
+  }
+
+  # non-searchable details are not in the key schema
+}
+
+
 ## Lambda Setup
 
-resource "aws_iam_role" "lambda_vpc_exec" {
-  name = "serverless_lambda_vpc"
+resource "aws_iam_role" "event_api_lambda_exec" {
+  name = "event_api_lambda_exec"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -91,7 +113,7 @@ resource "aws_iam_role" "lambda_vpc_exec" {
 }
 
 resource "aws_iam_policy" "DynamoReadWrite" {
-  name = "DynamoReadWrite"
+  name = "EventDBReadWrite"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -114,13 +136,16 @@ resource "aws_iam_policy" "DynamoReadWrite" {
         "logs:PutLogEvents"
       ]
       Effect = "Allow"
-      Resource = "*"
+      Resource = [
+        "${aws_dynamodb_table.event_db.arn}",
+        "arn:aws:logs:*",
+      ]
     }]
   })
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_policy" {
-  role       = aws_iam_role.lambda_vpc_exec.name
+  role       = aws_iam_role.event_api_lambda_exec.id
   policy_arn = aws_iam_policy.DynamoReadWrite.arn
 }
 
@@ -128,7 +153,7 @@ resource "aws_iam_role_policy_attachment" "lambda_policy" {
 ## Gateway Setup
 
 resource "aws_apigatewayv2_api" "lambda" {
-  name          = "serverless_lambda_gw"
+  name          = "event_api_gw"
   protocol_type = "HTTP"
 }
 
@@ -138,10 +163,10 @@ resource "aws_cloudwatch_log_group" "api_gw" {
   retention_in_days = 30
 }
 
-resource "aws_apigatewayv2_stage" "lambda" {
+resource "aws_apigatewayv2_stage" "development" {
   api_id = aws_apigatewayv2_api.lambda.id
 
-  name        = "serverless_lambda_stage"
+  name        = "event_api_dev"
   auto_deploy = true
 
   access_log_settings {
@@ -164,204 +189,55 @@ resource "aws_apigatewayv2_stage" "lambda" {
 }
 
 
-## Database
-/*
-resource "random_pet" "event_database_password" {
-  length = 4
-
-  keepers = {
-    id = "a"
-  }
-}
-
-resource "aws_security_group" "event_api_rds" {
-  name = "event_api_rds"
-
-  ingress {
-    from_port = 3306
-    to_port = 3306
-    protocol = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port = 3306
-    to_port = 3306
-    protocol = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-resource "aws_db_parameter_group" "rds_default" {
-  name   = "rds-default"
-  family = "mariadb10.6"
-
-  # Log connections?
-}
-
-resource "aws_db_subnet_group" "event_api_db" {
-  name       = "default vpc subnets"
-  subnet_ids = data.aws_subnets.default.ids
-
-  tags = {
-    Name = "The subnets for the default VPC"
-  }
-}
-
-resource "aws_db_instance" "event_api_db" {
-  allocated_storage     = 5               #  GiB
-  engine                = "mariadb"
-  engine_version        = "10.6"
-  instance_class        = "db.t2.micro"
-  db_name               = "event_api"
-  username              = "admin"
-  password              = random_pet.event_database_password.id
-  skip_final_snapshot   = true
-
-  db_subnet_group_name   = aws_db_subnet_group.event_api_db.id
-  vpc_security_group_ids = [aws_security_group.event_api_rds.id]
-  parameter_group_name   = aws_db_parameter_group.rds_default.name
-
-  apply_immediately     = true  # CHANGE THIS FOR PRODUCTION
-}
-*/
-
-## DynamoDB Database
-
-resource "aws_dynamodb_table" "example" {
-  name          = "event_api_dynamo_example"
-  billing_mode  = "PAY_PER_REQUEST"
-  hash_key      = "key"
-
-  attribute {
-    name = "key"
-    type = "S"
-  }
-
-  # Value is not in the key schema
-}
-
-
 ## Functions
 
-# Put Example Value
+# Create Event
 
-resource "aws_lambda_function" "put_value" {
-  function_name = "PutValue"
-
-  s3_bucket = aws_s3_bucket.lambda_bucket.id
-  s3_key    = aws_s3_object.lambda_event_api.key
-
-  runtime = "nodejs14.x"
-  handler = "put_value.handler"
-
-  source_code_hash = data.archive_file.lambda_event_api.output_base64sha256
-
-  role = aws_iam_role.lambda_vpc_exec.arn
-  
-  /*vpc_config {
-    # Needs to be the same availability zone as the database?
-	subnet_ids         = data.aws_subnets.default.ids
-	security_group_ids = [aws_security_group.event_api_rds.id]
-  }*/
-
-  environment {
-    variables = {
-      aws_region = var.aws_region
-      db_name = aws_dynamodb_table.example.name
-      db_key_id  = ""
-      db_secret_key = ""
-    }
-  }
-}
-
-resource "aws_cloudwatch_log_group" "put_value" {
-  name = "/aws/lambda/${aws_lambda_function.put_value.function_name}"
-
-  retention_in_days = 30
-}
-
-resource "aws_apigatewayv2_integration" "put_value" {
-  api_id = aws_apigatewayv2_api.lambda.id
-
-  integration_uri    = aws_lambda_function.put_value.invoke_arn
-  integration_type   = "AWS_PROXY"
-  integration_method = "POST"
-}
-
-resource "aws_apigatewayv2_route" "put_value" {
-  api_id = aws_apigatewayv2_api.lambda.id
-
-  route_key = "POST /value"
-  target    = "integrations/${aws_apigatewayv2_integration.put_value.id}"
-}
-
-resource "aws_lambda_permission" "gateway_put_value" {
-  statement_id  = "AllowExecutionFromAPIGateway"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.put_value.function_name
-  principal     = "apigateway.amazonaws.com"
-
-  source_arn = "${aws_apigatewayv2_api.lambda.execution_arn}/*/*"
-}
-
-# Get Example Value
-
-resource "aws_lambda_function" "get_value" {
-  function_name = "GetValue"
+resource "aws_lambda_function" "create_event" {
+  function_name = "CreateEvent"
 
   s3_bucket = aws_s3_bucket.lambda_bucket.id
   s3_key    = aws_s3_object.lambda_event_api.key
 
-  runtime = "nodejs14.x"
-  handler = "get_value.handler"
+  runtime   = "nodejs14.x"
+  handler   = "create_event.handler"
 
   source_code_hash = data.archive_file.lambda_event_api.output_base64sha256
 
-  role = aws_iam_role.lambda_vpc_exec.arn
-  
-  /*vpc_config {
-    # Needs to be the same availability zone as the database?
-	subnet_ids         = data.aws_subnets.default.ids
-	security_group_ids = [aws_security_group.event_api_rds.id]
-  }*/
+  role = aws_iam_role.event_api_lambda_exec.arn
 
   environment {
     variables = {
-      aws_region = var.aws_region
-      db_name = aws_dynamodb_table.example.name
-      db_key_id  = ""
-      db_secret_key = ""
+      aws_region    = var.aws_region
+      event_db_name = aws_dynamodb_table.event_db.name
     }
   }
 }
 
-resource "aws_cloudwatch_log_group" "get_value" {
-  name = "/aws/lambda/${aws_lambda_function.get_value.function_name}"
+resource "aws_cloudwatch_log_group" "create_event" {
+  name = "/aws/lambda/${aws_lambda_function.create_event.function_name}"
 
   retention_in_days = 30
 }
 
-resource "aws_apigatewayv2_integration" "get_value" {
+resource "aws_apigatewayv2_integration" "create_event" {
   api_id = aws_apigatewayv2_api.lambda.id
 
-  integration_uri    = aws_lambda_function.get_value.invoke_arn
+  integration_uri    = aws_lambda_function.create_event.invoke_arn
   integration_type   = "AWS_PROXY"
   integration_method = "POST"
 }
 
-resource "aws_apigatewayv2_route" "get_value" {
-  api_id = aws_apigatewayv2_api.lambda.id
+resource "aws_apigatewayv2_route" "create_event" {
+  api_id    = aws_apigatewayv2_api.lambda.id
 
-  route_key = "GET /value"
-  target    = "integrations/${aws_apigatewayv2_integration.get_value.id}"
+  route_key = "POST /create_event"
+  target    = "integrations/${aws_apigatewayv2_integration.create_event.id}"
 }
 
-resource "aws_lambda_permission" "gateway_get_value" {
-  statement_id  = "AllowExecutionFromAPIGateway"
+resource "aws_lambda_permission" "create_event" {
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.get_value.function_name
+  function_name = aws_lambda_function.create_event.function_name
   principal     = "apigateway.amazonaws.com"
-
-  source_arn = "${aws_apigatewayv2_api.lambda.execution_arn}/*/*"
+  source_arn    = "${aws_apigatewayv2_api.lambda.execution_arn}/*/*"
 }
